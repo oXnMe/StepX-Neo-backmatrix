@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 应用图标：17x23 点阵里的一个"跳舞的小人"，和背屏本身同一种语言 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#17131F"
+        android:pathData="M0,0h108v108H0z" />
+
+    <!-- 暗格：暗示点阵的底噪，不参与构图 -->
+    <path android:fillColor="#241C3D" android:pathData="M31,19h6v6h-6zM43,19h6v6h-6zM55,19h6v6h-6zM67,19h6v6h-6zM79,19h6v6h-6z" />
+    <path android:fillColor="#241C3D" android:pathData="M31,31h6v6h-6zM43,31h6v6h-6zM55,31h6v6h-6zM67,31h6v6h-6zM79,31h6v6h-6z" />
+    <path android:fillColor="#241C3D" android:pathData="M31,43h6v6h-6zM43,43h6v6h-6zM55,43h6v6h-6zM67,43h6v6h-6zM79,43h6v6h-6z" />
+    <path android:fillColor="#241C3D" android:pathData="M31,55h6v6h-6zM43,55h6v6h-6zM55,55h6v6h-6zM67,55h6v6h-6zM79,55h6v6h-6z" />
+    <path android:fillColor="#241C3D" android:pathData="M31,67h6v6h-6zM43,67h6v6h-6zM55,67h6v6h-6zM67,67h6v6h-6zM79,67h6v6h-6z" />
+    <path android:fillColor="#241C3D" android:pathData="M31,79h6v6h-6zM43,79h6v6h-6zM55,79h6v6h-6zM67,79h6v6h-6zM79,79h6v6h-6z" />
+
+    <!-- 主体：抬手抬腿的姿势，用亮度和大小分层 -->
+    <path android:fillColor="#8B6BFF" android:pathData="M43,19h6v6h-6z" />
+    <path android:fillColor="#8B6BFF" android:pathData="M67,19h6v6h-6z" />
+    <path android:fillColor="#F1EEFF" android:pathData="M55,19h6v6h-6z" />
+    <path android:fillColor="#F1EEFF" android:pathData="M55,31h6v6h-6z" />
+    <path android:fillColor="#8B6BFF" android:pathData="M43,31h6v6h-6z" />
+    <path android:fillColor="#8B6BFF" android:pathData="M67,31h6v6h-6z" />
+    <path android:fillColor="#F1EEFF" android:pathData="M55,43h6v6h-6z" />
+    <path android:fillColor="#C9BEFF" android:pathData="M43,43h6v6h-6z" />
+    <path android:fillColor="#C9BEFF" android:pathData="M67,43h6v6h-6z" />
+    <path android:fillColor="#F1EEFF" android:pathData="M55,55h6v6h-6z" />
+    <path android:fillColor="#8B6BFF" android:pathData="M55,67h6v6h-6z" />
+    <path android:fillColor="#8B6BFF" android:pathData="M43,67h6v6h-6z" />
+    <path android:fillColor="#8B6BFF" android:pathData="M67,67h6v6h-6z" />
+    <path android:fillColor="#C9BEFF" android:pathData="M43,79h6v6h-6z" />
+    <path android:fillColor="#C9BEFF" android:pathData="M67,79h6v6h-6z" />
+</vector>

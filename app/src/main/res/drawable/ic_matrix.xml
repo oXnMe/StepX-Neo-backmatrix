@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知小图标：必须是纯白单色形状 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M6,3h12a2,2 0 0 1 2,2v14a2,2 0 0 1 -2,2H6a2,2 0 0 1 -2,-2V5a2,2 0 0 1 2,-2zM7.5,7.5h2v2h-2zM11,7.5h2v2h-2zM14.5,7.5h2v2h-2zM7.5,11h2v2h-2zM11,11h2v2h-2zM14.5,11h2v2h-2zM7.5,14.5h2v2h-2zM14.5,14.5h2v2h-2z" />
+</vector>

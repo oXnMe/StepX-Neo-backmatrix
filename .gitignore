@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+/app/build
+/build/
+.kotlin/
+/.emu/
+/.avd/
+
+# 原始素材不入库：示例 GIF 的版权归原作者
+/assets-src/
