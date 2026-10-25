@@ -37,14 +37,22 @@ jobs:
         run: ./gradlew --no-daemon testDebugUnitTest
 
       - name: Build APKs
-        run: ./gradlew --no-daemon assembleDebug assembleRelease
+        run: |
+          # 打 tag 是正式发布，只出 release 包；分支构建才带 debug 方便装机调试
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            ./gradlew --no-daemon assembleRelease
+          else
+            ./gradlew --no-daemon assembleDebug assembleRelease
+          fi
 
       - name: Collect APKs
         run: |
           label="${GITHUB_REF_NAME//\//-}"
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/StepX-Neo-backmatrix-${label}-debug.apk"
           cp app/build/outputs/apk/release/app-release.apk "dist/StepX-Neo-backmatrix-${label}-release.apk"
+          if [[ "${GITHUB_REF}" != refs/tags/* ]]; then
+            cp app/build/outputs/apk/debug/app-debug.apk "dist/StepX-Neo-backmatrix-${label}-debug.apk"
+          fi
 
       - name: Upload test report
         if: failure()
@@ -62,7 +70,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: Attach APKs to release
+    name: Attach APK to release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
@@ -74,7 +82,8 @@ jobs:
           name: apk
           path: dist
 
+      # 只挂 release 包：debug 是给开发装机的，不该出现在下载页
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.apk
+          files: dist/*-release.apk
           generate_release_notes: true
