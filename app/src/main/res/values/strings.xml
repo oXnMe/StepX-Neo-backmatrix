@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">点阵背屏</string>
+    <string name="accessibility_desc">仅用于保活：让背屏动画在锁屏、切后台后继续推帧。本服务不读取屏幕内容，也不采集任何输入。</string>
 </resources>

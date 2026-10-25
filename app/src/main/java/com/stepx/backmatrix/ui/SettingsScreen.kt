@@ -32,14 +32,19 @@ import androidx.compose.ui.unit.sp
 /** 项目主页。装的是自己编的包时，别人问「这从哪来的」也得有据可查。 */
 private const val REPO_URL = "https://github.com/oXnMe/StepX-Neo-backmatrix"
 
-/** 设置页：背屏引导、后台放行、设备诊断、项目信息。 */
+/** 设置页：背屏引导、后台放行、通知与保活、设备诊断、项目信息。 */
 @Composable
 fun SettingsScreen(
     device: DeviceStatus,
     powerOk: Boolean,
+    notifOk: Boolean,
+    accessibilityOk: Boolean,
     onOpenSettings: () -> Unit,
     onRequestBattery: () -> Unit,
-    onOpenAutoStart: () -> Unit
+    onOpenAutoStart: () -> Unit,
+    onRequestNotification: () -> Unit,
+    onOpenAccessibility: () -> Unit,
+    onOpenAppDetails: () -> Unit
 ) {
     // 版本号写在设备诊断里：反馈问题时要能确认装的是哪个包，
     // 不然"改了还是老样子"很难判断是新包没装上还是改动没生效
@@ -68,7 +73,7 @@ fun SettingsScreen(
             Column {
                 Text("设置", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = Palette.text)
                 Spacer(Modifier.height(3.dp))
-                Text("背屏开关 · 后台放行 · 设备诊断", color = Palette.dim, fontSize = 12.sp)
+                Text("背屏开关 · 后台放行 · 通知与保活", color = Palette.dim, fontSize = 12.sp)
             }
             Pill(
                 if (device.hasService) "已连接" else "未连接",
@@ -131,6 +136,36 @@ fun SettingsScreen(
                 }
             }
 
+            // 通知与保活：通知决定前台服务的状态条能不能显示，
+            // 无障碍是系统眼里「用户开启的辅助功能」，进程优先级比普通后台高
+            Panel {
+                SectionTitle("通知与保活")
+                Spacer(Modifier.height(10.dp))
+                AllowItem(
+                    title = "通知",
+                    ok = notifOk,
+                    okText = "已允许",
+                    hint = if (notifOk)
+                        "锁屏后能看见「背屏播放中」，也是前台服务还在跑的凭证。"
+                    else
+                        "没有通知权限，锁屏后看不到播放状态，系统也更容易把服务停掉。",
+                    action = if (notifOk) null else "开启通知权限" to onRequestNotification,
+                    secondary = if (notifOk) null else "应用信息" to onOpenAppDetails
+                )
+                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp).height(1.dp).background(Palette.border))
+                AllowItem(
+                    title = "无障碍保活",
+                    ok = accessibilityOk,
+                    okText = "已开启",
+                    hint = if (accessibilityOk)
+                        "保活已生效。服务不读取屏幕内容，也不采集任何输入。"
+                    else
+                        "开启后进程不容易被系统回收，锁屏久放也不容易停在最后一帧。这一档可选，但推荐开。",
+                    action = if (accessibilityOk) null else "去系统设置开启" to onOpenAccessibility,
+                    secondary = null
+                )
+            }
+
             // 设备诊断
             Panel {
                 SectionTitle("设备")
@@ -186,5 +221,36 @@ private fun GuideStep(index: String, text: String) {
         }
         Spacer(Modifier.width(9.dp))
         Text(text, color = Palette.muted, fontSize = 11.sp, lineHeight = 18.sp)
+    }
+}
+
+/** 一条授权状态：标题 + 状态胶囊 + 一句说明 + 一个（或两个）按钮。 */
+@Composable
+private fun AllowItem(
+    title: String,
+    ok: Boolean,
+    okText: String,
+    hint: String,
+    action: Pair<String, () -> Unit>?,
+    secondary: Pair<String, () -> Unit>?
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, color = Palette.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Pill(if (ok) okText else "未开启", if (ok) Palette.ok else Palette.warn)
+    }
+    Spacer(Modifier.height(6.dp))
+    Text(hint, color = Palette.dim, fontSize = 11.sp, lineHeight = 16.sp)
+    if (action != null) {
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PrimaryButton(action.first, modifier = Modifier.weight(1f)) { action.second() }
+            if (secondary != null) {
+                GhostButton(secondary.first, modifier = Modifier.weight(1f)) { secondary.second() }
+            }
+        }
     }
 }

@@ -85,5 +85,19 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-started playback of a locally converted dot-matrix animation on the built-in STEPX PZ261A rear display." />
         </service>
+
+        <!-- 保活锚：一个不做事的无障碍服务，只为把进程优先级提上去 -->
+        <service
+            android:name=".player.KeepAliveService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_config" />
+        </service>
     </application>
 </manifest>

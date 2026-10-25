@@ -53,6 +53,7 @@ import com.stepx.backmatrix.core.Library
 import com.stepx.backmatrix.core.SourceLoader
 import com.stepx.backmatrix.core.SourcePreview
 import com.stepx.backmatrix.core.ToneSettings
+import com.stepx.backmatrix.player.KeepAlive
 import com.stepx.backmatrix.player.MatrixPlayer
 import com.stepx.backmatrix.player.PlaybackService
 import com.stepx.backmatrix.tools.ToolPrefs
@@ -103,6 +104,9 @@ class AppState(val activity: ComponentActivity) {
     )
     /** 电池优化白名单状态。原厂的自启动开关系统不给读，只有这个读得到。 */
     var powerOk by mutableStateOf(PowerGuide.isIgnoringBatteryOptimizations(activity))
+    /** 通知权限与无障碍保活：两个都读得到状态，设置页要显示真实开关。 */
+    var notifOk by mutableStateOf(KeepAlive.isNotificationGranted(activity))
+    var accessibilityOk by mutableStateOf(KeepAlive.isAccessibilityEnabled(activity))
     var convertMode by mutableStateOf(false)
     var source by mutableStateOf<SourcePreview?>(null)
     var settings by mutableStateOf(ToneSettings())
@@ -123,6 +127,12 @@ class AppState(val activity: ComponentActivity) {
     var paramVersion by mutableStateOf(0)
     var pendingStartId by mutableStateOf<String?>(null)
     var toolError by mutableStateOf<String?>(null)
+
+    /**
+     * 这次通知权限弹框是不是首启流程发起的。
+     * 是：回调里接着问后台放行（两个对话框串起来）；否：只是用户在设置页点了一下。
+     */
+    var notifAskFromFirstRun = false
 
     init {
         MatrixPlayer.setRotation(activity, prefs.getInt("rotation", 0))
@@ -201,9 +211,11 @@ class AppState(val activity: ComponentActivity) {
         refreshPower()
     }
 
-    /** 从系统设置页回来时重新读一遍白名单状态。 */
+    /** 从系统设置页（电池 / 通知 / 无障碍）回来时，重新读一遍这三项状态。 */
     fun refreshPower() {
         powerOk = PowerGuide.isIgnoringBatteryOptimizations(activity)
+        notifOk = KeepAlive.isNotificationGranted(activity)
+        accessibilityOk = KeepAlive.isAccessibilityEnabled(activity)
     }
 
     /** 弹系统的「忽略电池优化」确认框。 */
@@ -241,6 +253,20 @@ class AppState(val activity: ComponentActivity) {
     fun openAutoStart() {
         if (!PowerGuide.openAutoStartSettings(activity)) {
             Toast.makeText(activity, "打不开自启动管理，请手动到应用信息 → 耗电和后台里设置", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** 无障碍保活：系统只给列表页，勾选得用户自己来。 */
+    fun openAccessibility() {
+        if (!KeepAlive.openAccessibilitySettings(activity)) {
+            Toast.makeText(activity, "打不开无障碍设置，请手动到 设置 → 无障碍 里开启", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** 通知被拒过之后系统不再弹框，只能去应用信息里手动开。 */
+    fun openAppDetails() {
+        if (!PowerGuide.openAppDetails(activity)) {
+            Toast.makeText(activity, "打不开应用信息页", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -463,8 +489,14 @@ fun AppRoot(app: AppState) {
     val frame by MatrixPlayer.frame.collectAsState()
 
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        // 通知权限是首启第一个弹窗；它落地后再问后台放行，两个对话框才不会打架
-        app.requestBatteryOnFirstRun()
+        // 首启：通知权限落地后再问后台放行，两个对话框才不会打架。
+        // 设置页手动点的这一次只是刷新状态，别顺手再弹一个框。
+        if (app.notifAskFromFirstRun) {
+            app.notifAskFromFirstRun = false
+            app.requestBatteryOnFirstRun()
+        } else {
+            app.refreshPower()
+        }
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) app.onFilePicked(uri)
@@ -516,6 +548,7 @@ fun AppRoot(app: AppState) {
             if (!granted && app.shouldAskNotifications()) {
                 // 弹了通知权限就等回调里接着问，别一次丢两个对话框出来
                 waitingNotif = true
+                app.notifAskFromFirstRun = true
                 notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
@@ -578,9 +611,21 @@ fun AppRoot(app: AppState) {
                         app.screen == Screen.SETTINGS -> SettingsScreen(
                             device = app.device,
                             powerOk = app.powerOk,
+                            notifOk = app.notifOk,
+                            accessibilityOk = app.accessibilityOk,
                             onOpenSettings = { app.openSystemSettings() },
                             onRequestBattery = { app.requestBatteryExemption() },
-                            onOpenAutoStart = { app.openAutoStart() }
+                            onOpenAutoStart = { app.openAutoStart() },
+                            onRequestNotification = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    app.notifAskFromFirstRun = false
+                                    notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    app.openAppDetails()
+                                }
+                            },
+                            onOpenAccessibility = { app.openAccessibility() },
+                            onOpenAppDetails = { app.openAppDetails() }
                         )
                         else -> HomeScreen(
                             state = state,
