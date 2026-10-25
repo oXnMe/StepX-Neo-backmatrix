@@ -44,6 +44,14 @@ object BackScreen {
             manager = m
             setFrame = m.javaClass.getMethod("setBackScreenAgentFrame", IntArray::class.java, android.os.Bundle::class.java)
             infoMethod = runCatching { m.javaClass.getMethod("getBackScreenAnimationInfo") }.getOrNull()
+            if (infoMethod == null) {
+                android.util.Log.w(
+                    "BackScreen",
+                    "没有 getBackScreenAnimationInfo；${m.javaClass.name} 的方法：${
+                        m.javaClass.methods.joinToString { it.name }
+                    }"
+                )
+            }
             lastError = null
             true
         } catch (t: Throwable) {
@@ -79,20 +87,27 @@ object BackScreen {
         }
     }
 
-    /** 当前背屏合成器状态，仅用于诊断显示。 */
-    fun animationInfo(context: Context): String? {
+    /** 合成器状态：设置页和本地桥都要这两个值，别让调用方去解析拼好的字符串。 */
+    data class Composer(val type: String?, val state: String?)
+
+    fun composer(context: Context): Composer? {
         if (!ensure(context)) return null
         return try {
+            // 固件有时会返回 null（背屏没在跑 agent 时），这不是错误，调用方按「读不到」处理
             val info = infoMethod?.invoke(manager) ?: return null
-            val state = runCatching {
-                info.javaClass.getMethod("getState").invoke(info) as? String
-            }.getOrNull()
-            val type = runCatching {
-                info.javaClass.getMethod("getType").invoke(info) as? String
-            }.getOrNull()
-            "type=${type ?: "?"} state=${state ?: "?"}"
+            Composer(
+                type = runCatching {
+                    info.javaClass.getMethod("getType").invoke(info) as? String
+                }.getOrNull(),
+                state = runCatching {
+                    info.javaClass.getMethod("getState").invoke(info) as? String
+                }.getOrNull()
+            )
         } catch (t: Throwable) {
-            (t as? java.lang.reflect.InvocationTargetException)?.targetException?.message ?: t.message
+            // 别静默吞：合成器状态读不出来时，设置页要能说明原因
+            val cause = (t as? java.lang.reflect.InvocationTargetException)?.targetException ?: t
+            lastError = "合成器状态读取失败：${cause.message ?: cause.javaClass.simpleName}"
+            null
         }
     }
 }

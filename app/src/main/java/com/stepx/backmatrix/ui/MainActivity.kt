@@ -18,14 +18,20 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
@@ -44,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.stepx.backmatrix.bridge.BridgeHub
+import com.stepx.backmatrix.bridge.BridgeService
 import com.stepx.backmatrix.core.BackScreen
 import com.stepx.backmatrix.core.Converter
 import com.stepx.backmatrix.core.DotAnimation
@@ -59,6 +67,7 @@ import com.stepx.backmatrix.player.PlaybackService
 import com.stepx.backmatrix.tools.ToolPrefs
 import com.stepx.backmatrix.tools.Tools
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** 应用内的四块屏幕。转换页是叠加态，不在这里。 */
@@ -100,7 +109,7 @@ class AppState(val activity: ComponentActivity) {
     var thumbs by mutableStateOf<Map<String, ByteArray>>(emptyMap())
     var idleFrame by mutableStateOf<ByteArray?>(null)
     var device by mutableStateOf(
-        DeviceStatus(Build.MODEL ?: "未知", BackScreen.isTargetModel, false, null, null, "—")
+        DeviceStatus(Build.MODEL ?: "未知", BackScreen.isTargetModel, false, null, null, null, "—")
     )
     /** 电池优化白名单状态。原厂的自启动开关系统不给读，只有这个读得到。 */
     var powerOk by mutableStateOf(PowerGuide.isIgnoringBatteryOptimizations(activity))
@@ -140,6 +149,13 @@ class AppState(val activity: ComponentActivity) {
         refreshLibrary()
         refreshDevice()
         loadToolPreviews()
+        // 上次把桥留着开着的，重开应用就接着开——不然每次都得到设置页点一遍
+        if (BridgeService.isRememberedOn(activity)) BridgeService.start(activity)
+    }
+
+    /** 设置页的启停：服务负责保活与通知，桥本身在 BridgeHub 里起。 */
+    fun setBridge(on: Boolean) {
+        if (on) BridgeService.start(activity) else BridgeService.stop(activity)
     }
 
     private fun loadToolPreviews() {
@@ -191,7 +207,7 @@ class AppState(val activity: ComponentActivity) {
 
     fun refreshDevice() {
         val has = BackScreen.hasService(activity)
-        val info = if (has) BackScreen.animationInfo(activity) else null
+        val composer = if (has) BackScreen.composer(activity) else null
         val settingValue = runCatching {
             Settings.System.getInt(activity.contentResolver, "stepos_back_screen_display", 1)
         }.getOrNull()
@@ -204,11 +220,31 @@ class AppState(val activity: ComponentActivity) {
             model = Build.MODEL ?: "未知",
             isTarget = BackScreen.isTargetModel,
             hasService = has,
-            info = info,
+            composerType = composer?.type,
+            composerState = composer?.state,
             error = BackScreen.lastError,
             backScreenSetting = label
         )
         refreshPower()
+    }
+
+    /**
+     * 只用来给「设备」面板做轮询：值没变就不写回 state。
+     *
+     * 合成器上报在播放开始/停止、背屏熄灭时会变，光靠 onResume 刷的话，
+     * 停在设置页看到的永远是进来那一刻的值。轮询每秒一次，不判断相等会
+     * 让整个面板跟着重组。
+     */
+    fun pollDevice() {
+        val has = BackScreen.hasService(activity)
+        val composer = if (has) BackScreen.composer(activity) else null
+        val next = device.copy(
+            hasService = has,
+            composerType = composer?.type,
+            composerState = composer?.state,
+            error = BackScreen.lastError
+        )
+        if (next != device) device = next
     }
 
     /** 从系统设置页（电池 / 通知 / 无障碍）回来时，重新读一遍这三项状态。 */
@@ -487,6 +523,8 @@ class AppState(val activity: ComponentActivity) {
 fun AppRoot(app: AppState) {
     val state by MatrixPlayer.state.collectAsState()
     val frame by MatrixPlayer.frame.collectAsState()
+    val bridgeRunning by BridgeHub.running.collectAsState()
+    val bridgeError by BridgeHub.lastError.collectAsState()
 
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         // 首启：通知权限落地后再问后台放行，两个对话框才不会打架。
@@ -556,99 +594,129 @@ fun AppRoot(app: AppState) {
         if (!waitingNotif) app.requestBatteryOnFirstRun()
     }
 
+    // 设置页开着的时候轮询设备状态：合成器会随播放/熄屏变，
+    // 只有 onResume 那一刷的话，人停在页面上看不到变化。
+    // 轮询跟着 screen 走，离开设置页这个协程就被取消了。
+    LaunchedEffect(app.screen) {
+        if (app.screen != Screen.SETTINGS) return@LaunchedEffect
+        while (true) {
+            delay(1200)
+            app.pollDevice()
+        }
+    }
+
     Surface(color = Palette.bg, modifier = Modifier.fillMaxSize()) {
-        // targetSdk 35 在 Android 15 上强制边到边，必须自己让开状态栏与手势条
-        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) {
-                    val src = app.source
-                    when {
-                        app.convertMode && src != null -> ConvertScreen(
-                            sourceName = src.displayName,
-                            sourceInfo = src.infoText(),
-                            settings = app.settings,
-                            previewFrame = app.previewFrame,
-                            previewIndex = app.previewIndex,
-                            previewCount = src.samples.size.coerceAtLeast(1),
-                            busy = app.busy,
-                            progress = app.progress,
-                            progressText = app.progressText,
-                            error = app.error,
-                            onSettings = { app.updateSettings(it) },
-                            onPreviewIndex = { app.selectPreviewIndex(it) },
-                            onCancel = { app.cancelConvert() },
-                            onConfirm = { app.confirmConvert() }
-                        )
-                        app.screen == Screen.TOOL_DETAIL -> {
-                            val spec = app.activeToolId?.let { Tools.spec(it) }
-                            if (spec == null) {
-                                app.backToTools()
-                            } else {
-                                // 按 id 分槽：不同工具之间不能复用 Compose 的 remember 槽位
-                                androidx.compose.runtime.key(spec.id) {
-                                    ToolScreen(
-                                        context = app.activity,
-                                        spec = spec,
-                                        state = state,
-                                        frame = frame,
-                                        fallback = app.toolPreviews[spec.id],
-                                        paramVersion = app.paramVersion,
-                                        onBack = { app.backToTools() },
-                                        onStart = { startWithPermission(spec.id) },
-                                        onStop = { app.stopPlayback() },
-                                        onParam = { k, v -> app.updateToolParam(spec.id, k, v) },
-                                        onReset = { app.resetTool() },
-                                    )
-                                }
+        // 底部不再整体让开：导航栏要连手势区一起涂成同一个底色，
+        // 让开之后那条 35dp 的底色黑边看着就像导航栏没铺满
+        val barVisible = !app.convertMode && app.screen != Screen.TOOL_DETAIL
+        Column(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+                )
+        ) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    // 没有底部导航的页面（工具详情、转换）得自己让开手势区
+                    .then(
+                        if (barVisible) Modifier
+                        else Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                    )
+            ) {
+                val src = app.source
+                when {
+                    app.convertMode && src != null -> ConvertScreen(
+                        sourceName = src.displayName,
+                        sourceInfo = src.infoText(),
+                        settings = app.settings,
+                        previewFrame = app.previewFrame,
+                        previewIndex = app.previewIndex,
+                        previewCount = src.samples.size.coerceAtLeast(1),
+                        busy = app.busy,
+                        progress = app.progress,
+                        progressText = app.progressText,
+                        error = app.error,
+                        onSettings = { app.updateSettings(it) },
+                        onPreviewIndex = { app.selectPreviewIndex(it) },
+                        onCancel = { app.cancelConvert() },
+                        onConfirm = { app.confirmConvert() }
+                    )
+                    app.screen == Screen.TOOL_DETAIL -> {
+                        val spec = app.activeToolId?.let { Tools.spec(it) }
+                        if (spec == null) {
+                            app.backToTools()
+                        } else {
+                            // 按 id 分槽：不同工具之间不能复用 Compose 的 remember 槽位
+                            androidx.compose.runtime.key(spec.id) {
+                                ToolScreen(
+                                    context = app.activity,
+                                    spec = spec,
+                                    state = state,
+                                    frame = frame,
+                                    fallback = app.toolPreviews[spec.id],
+                                    paramVersion = app.paramVersion,
+                                    onBack = { app.backToTools() },
+                                    onStart = { startWithPermission(spec.id) },
+                                    onStop = { app.stopPlayback() },
+                                    onParam = { k, v -> app.updateToolParam(spec.id, k, v) },
+                                    onReset = { app.resetTool() },
+                                )
                             }
                         }
-                        app.screen == Screen.TOOLS -> ToolsScreen(
-                            ready = app.device.hasService,
-                            runningToolId = if (state.live) state.toolId else "",
-                            previews = app.toolPreviews,
-                            onOpen = { app.openTool(it) }
-                        )
-                        app.screen == Screen.SETTINGS -> SettingsScreen(
-                            device = app.device,
-                            powerOk = app.powerOk,
-                            notifOk = app.notifOk,
-                            accessibilityOk = app.accessibilityOk,
-                            onOpenSettings = { app.openSystemSettings() },
-                            onRequestBattery = { app.requestBatteryExemption() },
-                            onOpenAutoStart = { app.openAutoStart() },
-                            onRequestNotification = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    app.notifAskFromFirstRun = false
-                                    notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                } else {
-                                    app.openAppDetails()
-                                }
-                            },
-                            onOpenAccessibility = { app.openAccessibility() },
-                            onOpenAppDetails = { app.openAppDetails() }
-                        )
-                        else -> HomeScreen(
-                            state = state,
-                            frame = frame,
-                            entries = app.entries,
-                            thumbs = app.thumbs,
-                            ready = app.device.hasService,
-                            idleFrame = app.idleFrame,
-                            converting = app.busy,
-                            onPlayPause = { app.togglePlay() },
-                            onStop = { app.stopPlayback() },
-                            onRotate = { app.rotate() },
-                            onBrightness = { app.setBrightness(it) },
-                            onPickFile = { picker.launch(arrayOf("image/gif", "image/*", "video/mp4", "video/*")) },
-                            onPlayEntry = { app.playEntry(it) },
-                            onDeleteEntry = { app.deleteEntry(it) }
-                        )
                     }
+                    app.screen == Screen.TOOLS -> ToolsScreen(
+                        ready = app.device.hasService,
+                        runningToolId = if (state.live) state.toolId else "",
+                        previews = app.toolPreviews,
+                        onOpen = { app.openTool(it) }
+                    )
+                    app.screen == Screen.SETTINGS -> SettingsScreen(
+                        device = app.device,
+                        powerOk = app.powerOk,
+                        notifOk = app.notifOk,
+                        accessibilityOk = app.accessibilityOk,
+                            bridgeOn = bridgeRunning,
+                            bridgeError = bridgeError,
+                            rotationTurns = state.rotationTurns,
+                            brightness = state.brightness,
+                        onOpenSettings = { app.openSystemSettings() },
+                        onRequestBattery = { app.requestBatteryExemption() },
+                        onOpenAutoStart = { app.openAutoStart() },
+                        onRequestNotification = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                app.notifAskFromFirstRun = false
+                                notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                app.openAppDetails()
+                            }
+                        },
+                        onOpenAccessibility = { app.openAccessibility() },
+                        onOpenAppDetails = { app.openAppDetails() },
+                        onToggleBridge = { app.setBridge(it) }
+                    )
+                    else -> HomeScreen(
+                        state = state,
+                        frame = frame,
+                        entries = app.entries,
+                        thumbs = app.thumbs,
+                        ready = app.device.hasService,
+                        idleFrame = app.idleFrame,
+                        converting = app.busy,
+                        onPlayPause = { app.togglePlay() },
+                        onStop = { app.stopPlayback() },
+                        onRotate = { app.rotate() },
+                        onBrightness = { app.setBrightness(it) },
+                        onPickFile = { picker.launch(arrayOf("image/gif", "image/*", "video/mp4", "video/*")) },
+                        onPlayEntry = { app.playEntry(it) },
+                        onDeleteEntry = { app.deleteEntry(it) }
+                    )
                 }
-                if (!app.convertMode && app.screen != Screen.TOOL_DETAIL) {
-                    BottomBar(app.screen) { target ->
-                        if (target == Screen.TOOLS) app.openTools() else app.screen = target
-                    }
+            }
+            if (barVisible) {
+                BottomBar(app.screen) { target ->
+                    if (target == Screen.TOOLS) app.openTools() else app.screen = target
                 }
             }
         }
@@ -658,13 +726,22 @@ fun AppRoot(app: AppState) {
 /** 底部三格导航：动画 / 工具 / 设置。 */
 @Composable
 private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
+    // 底色要铺到手势条下面：只画内容高度的话，栏下面会留一条页面底色的黑带，
+    // 看着像导航栏没铺满。
+    //
+    // 内容不再在行里居中，而是贴着行底：居中会把图标顶到分隔线上，
+    // 上方一点余地都没有；贴底则上方自然空出 BAR_HEIGHT - 内容高的一截。
+    //
+    // 底部那 36dp 是系统的触摸保留区（手势导航的 nav bar 窗口），压进去实测
+    // 点不动——tap y=2545 能切页、y=2570 没反应，所以内容必须整块停在这条线以上。
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    Column(Modifier.fillMaxWidth().background(Palette.surface)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.border))
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .background(Palette.surface)
+                .height(BAR_HEIGHT),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             BarItem("动画", Glyph.FILM, current == Screen.HOME, Modifier.weight(1f)) {
                 onSelect(Screen.HOME)
@@ -676,8 +753,18 @@ private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
                 onSelect(Screen.SETTINGS)
             }
         }
+        // 手势区继续用同一个底色填满
+        Spacer(Modifier.fillMaxWidth().height(navBottom))
     }
 }
+
+/**
+ * 导航栏内容行高。
+ *
+ * 内容本身约 32dp（图标 16 + 间距 4 + 文字 12sp 行高），行高给到 44dp，
+ * 图标上方还剩 12dp。贴底摆放，行高只决定分隔线在哪。
+ */
+private val BAR_HEIGHT = 44.dp
 
 @Composable
 private fun BarItem(
@@ -688,12 +775,16 @@ private fun BarItem(
     onClick: () -> Unit
 ) {
     val tint = if (active) Palette.accent else Palette.dim
+    // 撑满整格再底部对齐：只靠 Row 的 verticalAlignment 摆不动（子项自己撑高了），
+    // 而且居中会让图标顶到分隔线上、下方反而空着
     Column(
         modifier
             .fillMaxWidth()
+            .fillMaxHeight()
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(bottom = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Bottom
     ) {
         GlyphIcon(glyph, tint, 16.dp)
         Spacer(Modifier.height(4.dp))
@@ -701,6 +792,8 @@ private fun BarItem(
             label,
             color = tint,
             fontSize = 10.sp,
+            // 行高压到 1.2 倍：默认行高会把整格撑高 4dp，图标就被顶上去 4dp
+            lineHeight = 12.sp,
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal
         )
     }

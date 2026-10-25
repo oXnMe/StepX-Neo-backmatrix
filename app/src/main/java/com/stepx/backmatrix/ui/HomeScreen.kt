@@ -35,7 +35,9 @@ data class DeviceStatus(
     val model: String,
     val isTarget: Boolean,
     val hasService: Boolean,
-    val info: String?,
+    /** 合成器上报的类型（custom / text / ...），背屏空闲时固件不回，就是 null */
+    val composerType: String?,
+    val composerState: String?,
     val error: String?,
     val backScreenSetting: String
 )

@@ -99,5 +99,25 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_config" />
         </service>
+
+        <!--
+            本地桥：给 Step Studio 的 H5 用的回环 HTTP 服务。
+            用 specialUse 而不是 dataSync——后者在 Android 15 上每天只有 6 小时额度，
+            桥是要一直挂着等页面来调的。
+        -->
+        <service
+            android:name=".bridge.BridgeService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-started local loopback HTTP bridge that lets a local H5 app push dot-matrix frames to the built-in STEPX PZ261A rear display." />
+        </service>
+
+        <!-- 桥的看门狗：只在桥开着的时候排程 -->
+        <receiver
+            android:name=".bridge.BridgeWatchdog"
+            android:exported="false" />
     </application>
 </manifest>
