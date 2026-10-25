@@ -209,9 +209,9 @@ fun SettingsScreen(
                 Spacer(Modifier.height(6.dp))
                 Text(
                     if (bridgeOn)
-                        "Studio 的页面现在可以连了。经它推帧会先停掉正在播放的画面，否则下一帧就把 H5 的帧盖掉。"
+                        "Studio 做的 App 现在可以连背屏了。经它推帧会先停掉正在播放的画面，否则下一帧就把 Studio H5 App 的帧盖掉。"
                     else
-                        "给 Step Studio 做的 H5 用：启动后在本机回环上开一个 HTTP 服务，页面经壳代发请求就能推帧、清屏、查状态。只绑 127.0.0.1，不对外网开放。",
+                        "给 Step Studio 做的 H5 App 用：启动后在本机回环上开一个 HTTP 服务，页面经壳代发请求就能推帧、清屏、查状态。只绑 127.0.0.1，不对外网开放。",
                     color = Palette.dim,
                     fontSize = 11.sp,
                     lineHeight = 16.sp
