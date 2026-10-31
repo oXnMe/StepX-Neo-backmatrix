@@ -87,7 +87,7 @@ object BackScreen {
         }
     }
 
-    /** 合成器状态：设置页和本地桥都要这两个值，别让调用方去解析拼好的字符串。 */
+    /** 合成器状态：设置页要这两个值，别让调用方去解析拼好的字符串。 */
     data class Composer(val type: String?, val state: String?)
 
     fun composer(context: Context): Composer? {

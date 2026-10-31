@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | ![转换](docs/screenshot-convert.png) | ![设置上半](docs/screenshot-settings-1.png) | ![设置下半](docs/screenshot-settings-2.png) |
 
-截图拍自 PZ261A 真机（1200×2670），右上角的"就绪"表示 `display_ext` 服务可达。设置页内容有两屏多，拆成上下两张，中间「通知与保活」一栏有重叠。
+截图拍自 PZ261A 真机（1200×2670），右上角的"就绪"表示 `display_ext` 服务可达。设置页内容超过一屏，拆成上下两张：上张到「通知与保活」，下张是「设备」和「项目」。
 
 ## 动画
 
@@ -82,25 +82,6 @@ PZ261A 固件注册了一个 `display_ext` 系统服务，没有 SDK 也没有 A
 - 只有一个 agent 通道，来电 / 相机等场景由固件决定优先级，应用抢不过
 - 机型不对或服务不存在时界面直接标出来
 
-## 本地桥（给 Step Studio 的 H5 App）
-
-设置页 →「背屏桥」→ 启动，应用会在 `127.0.0.1:39871` 起一个只绑回环的 HTTP 服务。
-Studio 做的 App 里直接 `fetch` 会被壳的 CSP 拦住，得走壳的 `request` 代发，桥再把帧转给背屏。
-
-| 入口 | 说明 |
-| --- | --- |
-| `GET /health` | 探活，不校验 Token，返回机型与 `display_ext` 可用性 |
-| `POST /api/call` | 带 `X-Bridge-Token`，body 是 `{ "name": "...", "arguments": {...} }` |
-| 能力 | `set_back_screen_frame`（`frame: int[391]`）、`clear_back_screen_frame`、`get_back_screen_display_info` |
-
-- 帧是 `int[391]`，索引 `y*17+x`，取值 0..255；桥推的是原始帧，不套用界面上的亮度与旋转
-- 推帧前会先停掉正在播放的动画 / 工具，否则下一帧就把 Studio H5 App 的帧盖掉
-- 业务失败也是 HTTP 200 + `{"ok":false,"error":"..."}`，页面只能靠 body 判断
-- 端口与 Token 在设置页里能直接看到；接入提示词点「背屏桥 → 接入提示词」即可整段复制，仓库里同一份在 [docs/STUDIO_PROMPT.md](docs/STUDIO_PROMPT.md)
-
-除了上面三个，桥里还挂着 14 个**待验证探针**：`wake_up_back_screen` / `sleep_back_screen`（`display_ext` 没有这两个方法，调用即报错），以及 `get_/set_back_screen_brightness`、`display_mode`、`auto_rotate`、`camera_link`、`basic_type` 这一组 Settings 读写（键名按原厂命名推测，写进去系统不采纳）。
-留着的用处是换固件后能直接试：读接口返回 `unverified:true`，写接口返回 `bestEffort:true` 与 `applied`——**`applied:true` 只说明值写进了 Settings，不代表背屏会照做**。这些不进接入提示词。
-
 ## 转换管线
 
 ```
@@ -153,7 +134,6 @@ python3 tools/convert_demo.py your-clip.gif \
 ```
 app/src/main/java/com/stepx/backmatrix/
 ├── core/     Dot 常量与旋转、Scene 绘图原语与 3×5 字体、Converter 管线、GifDecoder、.bsa、BackScreen 反射
-├── bridge/   本地 HTTP 桥：BridgeServer、能力分发 BridgeApi、BridgeService、看门狗
 ├── player/   MatrixPlayer（动画 / 工具两种驱动源共用一条去重管线）、PlaybackService
 ├── tools/    Tool 框架与注册表、NetTools、FeedTools、SensorTools、PsychoTools、ArtTools
 └── ui/       Compose 界面：动画页、工具箱、工具详情、转换页、设置页、点阵画布
@@ -173,7 +153,6 @@ tools/convert_demo.py             桌面端同款转换，生成内置资源
 - 敲击计数分不出「敲背面」和「敲桌子」，放在桌上敲桌子同样会记；把手机平移着放到桌面
   （机身不转）时静置闸门攒不够，也可能误计，灵敏度调低一档即可
 - 蓝牙雷达的方向是地址散列的固定值，手机没有测向天线，**方向是装饰性的**
-- 本地桥只绑 `127.0.0.1`，桌面浏览器里预览 Studio H5 App 连不到，必须真机
 - `getBackScreenAnimationInfo()` 在背屏熄灭或空闲时不回，设置页的「合成器类型 / 状态」会显示「读不到」
 - 不读取通知，不上传数据；联网只用于节点探测、流量计数和读 netdata / rig-exporter
 

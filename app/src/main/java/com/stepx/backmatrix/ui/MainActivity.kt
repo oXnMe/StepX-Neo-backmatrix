@@ -50,8 +50,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.stepx.backmatrix.bridge.BridgeHub
-import com.stepx.backmatrix.bridge.BridgeService
 import com.stepx.backmatrix.core.BackScreen
 import com.stepx.backmatrix.core.Converter
 import com.stepx.backmatrix.core.DotAnimation
@@ -149,13 +147,6 @@ class AppState(val activity: ComponentActivity) {
         refreshLibrary()
         refreshDevice()
         loadToolPreviews()
-        // 上次把桥留着开着的，重开应用就接着开——不然每次都得到设置页点一遍
-        if (BridgeService.isRememberedOn(activity)) BridgeService.start(activity)
-    }
-
-    /** 设置页的启停：服务负责保活与通知，桥本身在 BridgeHub 里起。 */
-    fun setBridge(on: Boolean) {
-        if (on) BridgeService.start(activity) else BridgeService.stop(activity)
     }
 
     private fun loadToolPreviews() {
@@ -523,8 +514,6 @@ class AppState(val activity: ComponentActivity) {
 fun AppRoot(app: AppState) {
     val state by MatrixPlayer.state.collectAsState()
     val frame by MatrixPlayer.frame.collectAsState()
-    val bridgeRunning by BridgeHub.running.collectAsState()
-    val bridgeError by BridgeHub.lastError.collectAsState()
 
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         // 首启：通知权限落地后再问后台放行，两个对话框才不会打架。
@@ -677,10 +666,8 @@ fun AppRoot(app: AppState) {
                         powerOk = app.powerOk,
                         notifOk = app.notifOk,
                         accessibilityOk = app.accessibilityOk,
-                            bridgeOn = bridgeRunning,
-                            bridgeError = bridgeError,
-                            rotationTurns = state.rotationTurns,
-                            brightness = state.brightness,
+                        rotationTurns = state.rotationTurns,
+                        brightness = state.brightness,
                         onOpenSettings = { app.openSystemSettings() },
                         onRequestBattery = { app.requestBatteryExemption() },
                         onOpenAutoStart = { app.openAutoStart() },
@@ -693,8 +680,7 @@ fun AppRoot(app: AppState) {
                             }
                         },
                         onOpenAccessibility = { app.openAccessibility() },
-                        onOpenAppDetails = { app.openAppDetails() },
-                        onToggleBridge = { app.setBridge(it) }
+                        onOpenAppDetails = { app.openAppDetails() }
                     )
                     else -> HomeScreen(
                         state = state,

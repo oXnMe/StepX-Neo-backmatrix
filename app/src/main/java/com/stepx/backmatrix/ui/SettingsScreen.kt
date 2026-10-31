@@ -1,12 +1,7 @@
 package com.stepx.backmatrix.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -14,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,43 +17,30 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import com.stepx.backmatrix.bridge.BridgeConfig
-import com.stepx.backmatrix.bridge.BridgePrompt
 import com.stepx.backmatrix.core.Dot
 import kotlin.math.roundToInt
 
 /** 项目主页。装的是自己编的包时，别人问「这从哪来的」也得有据可查。 */
 private const val REPO_URL = "https://github.com/oXnMe/StepX-Neo-backmatrix"
 
-/** 设置页：背屏引导、后台放行、通知与保活、本地桥、设备诊断、项目信息。 */
+/** 设置页：背屏引导、后台放行、通知与保活、设备诊断、项目信息。 */
 @Composable
 fun SettingsScreen(
     device: DeviceStatus,
     powerOk: Boolean,
     notifOk: Boolean,
     accessibilityOk: Boolean,
-    bridgeOn: Boolean,
-    bridgeError: String?,
     rotationTurns: Int,
     brightness: Float,
     onOpenSettings: () -> Unit,
@@ -67,8 +48,7 @@ fun SettingsScreen(
     onOpenAutoStart: () -> Unit,
     onRequestNotification: () -> Unit,
     onOpenAccessibility: () -> Unit,
-    onOpenAppDetails: () -> Unit,
-    onToggleBridge: (Boolean) -> Unit
+    onOpenAppDetails: () -> Unit
 ) {
     // 版本号写在设备诊断里：反馈问题时要能确认装的是哪个包，
     // 不然"改了还是老样子"很难判断是新包没装上还是改动没生效
@@ -79,8 +59,6 @@ fun SettingsScreen(
             "${info.versionName} (${info.longVersionCode})"
         }.getOrDefault("—")
     }
-    // 提示词弹窗：内容只读、可选中，另有「复制全文」一键拿到剪贴板
-    var showPrompt by remember { mutableStateOf(false) }
     // 设备上没装浏览器时不要崩，失败就算了
     val openUrl: (String) -> Unit = { url ->
         runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -99,7 +77,7 @@ fun SettingsScreen(
             Column {
                 Text("设置", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = Palette.text)
                 Spacer(Modifier.height(3.dp))
-                Text("背屏开关 · 后台保活 · 本地桥", color = Palette.dim, fontSize = 12.sp)
+                Text("背屏开关 · 后台保活 · 设备诊断", color = Palette.dim, fontSize = 12.sp)
             }
             Pill(
                 if (device.hasService) "已连接" else "未连接",
@@ -192,49 +170,6 @@ fun SettingsScreen(
                 )
             }
 
-            // 本地桥：Studio 做的 H5 在壳里调不到背屏（fetch 被 CSP 拦、display_ext 只能原生反射），
-            // 这里开一个只绑回环的 HTTP 服务，页面经壳代发请求，桥再把帧转给背屏
-            Panel {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("背屏桥", color = Palette.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Pill(
-                        if (bridgeOn) "运行中" else "未运行",
-                        if (bridgeOn) Palette.ok else Palette.muted
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    if (bridgeOn)
-                        "Studio 做的 App 现在可以连背屏了。经它推帧会先停掉正在播放的画面，否则下一帧就把 Studio H5 App 的帧盖掉。"
-                    else
-                        "给 Step Studio 做的 H5 App 用：启动后在本机回环上开一个 HTTP 服务，页面经壳代发请求就能推帧、清屏、查状态。只绑 127.0.0.1，不对外网开放。",
-                    color = Palette.dim,
-                    fontSize = 11.sp,
-                    lineHeight = 16.sp
-                )
-                Spacer(Modifier.height(10.dp))
-                KeyValueRow("健康检查", "GET /health")
-                KeyValueRow("调用端点", "POST /api/call")
-                KeyValueRow("端口 / Token", "${BridgeConfig.PORT} · ${BridgeConfig.TOKEN}")
-                if (bridgeError != null) {
-                    KeyValueRow("最近错误", bridgeError, Palette.danger)
-                }
-                Spacer(Modifier.height(10.dp))
-                // 提示词是这一栏最该给的东西：能力名、字段名（arguments 不是 args）、
-                // 以及「HTTP 200 也可能是失败」都在里面，手抄一遍必错
-                GhostButton("接入提示词", modifier = Modifier.fillMaxWidth()) { showPrompt = true }
-                Spacer(Modifier.height(8.dp))
-                if (bridgeOn) {
-                    GhostButton("停止背屏桥", modifier = Modifier.fillMaxWidth()) { onToggleBridge(false) }
-                } else {
-                    PrimaryButton("启动背屏桥", modifier = Modifier.fillMaxWidth()) { onToggleBridge(true) }
-                }
-            }
-
             // 设备诊断
             Panel {
                 SectionTitle("设备")
@@ -279,84 +214,6 @@ fun SettingsScreen(
                 color = Palette.dim,
                 fontSize = 10.sp
             )
-        }
-    }
-
-    if (showPrompt) PromptDialog(onClose = { showPrompt = false })
-}
-
-/**
- * 接入提示词弹窗。
- *
- * 用接近全屏的 [Dialog] 而不是 AlertDialog：提示词里有 JS 示例，
- * 系统对话框宽度太窄，等宽字一行放不下二十来个字符，断行断得没法看。
- *
- * 文本用 [SelectionContainer] 包住，长按能挑一段；整段复制走底部按钮。
- */
-@Composable
-private fun PromptDialog(onClose: () -> Unit) {
-    val ctx = LocalContext.current
-    val copyAll = {
-        val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        val ok = runCatching {
-            cm?.setPrimaryClip(ClipData.newPlainText("背屏桥接入提示词", BridgePrompt.TEXT))
-        }.isSuccess
-        Toast.makeText(
-            ctx,
-            if (ok) "已复制全文" else "复制失败，可以长按手动选择",
-            Toast.LENGTH_SHORT
-        ).show()
-        if (ok) onClose()
-    }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            Modifier
-                .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.88f),
-            color = Palette.surface,
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, Palette.border)
-        ) {
-            Column(Modifier.fillMaxSize().padding(18.dp)) {
-                Text(
-                    "接入提示词",
-                    color = Palette.text,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    "整段复制给 Step Studio 用，只含已验证可用的能力",
-                    color = Palette.dim,
-                    fontSize = 11.sp
-                )
-                Spacer(Modifier.height(12.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Palette.bg)
-                        .padding(12.dp)
-                ) {
-                    Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                        SelectionContainer {
-                            Text(
-                                BridgePrompt.TEXT,
-                                color = Palette.muted,
-                                fontSize = 10.sp,
-                                lineHeight = 16.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GhostButton("关闭", modifier = Modifier.weight(1f)) { onClose() }
-                    PrimaryButton("复制全文", modifier = Modifier.weight(1f)) { copyAll() }
-                }
-            }
         }
     }
 }
